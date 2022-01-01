@@ -2,11 +2,38 @@
 from typing import NamedTuple
 
 import numpy as np 
-from numpy import sin, cos, arctan2, sqrt, pi, radians
+from numpy import sin, cos, arcsin, arccos, arctan2, sqrt, pi, radians
+import pandas as pd
 
 class LatLon(NamedTuple):
     latitude: float
     longitude: float 
+
+class LatLonBear(NamedTuple):
+    latitude: float
+    longitude: float 
+    bearing: float
+
+class RadCoords(NamedTuple):
+    phi: float
+    lam: float 
+
+class RadBearing(NamedTuple):
+    phi: float
+    lam: float 
+    theta: float 
+
+def cross(a, b):
+    a1, a2, a3 = a 
+    b1, b2, b3 = b 
+    return Vector(a2 * b3 - a3 * b2, a3 * b1  - a1 * b3, a1 * b2 - a2 * b1)
+
+class Vector(NamedTuple):
+    x: float 
+    y: float
+    z: float
+
+    cross = cross
 
 _AVG_EARTH_RADIUS_KM = 6371.0088
 
@@ -16,9 +43,48 @@ def get_rad_coords(pos):
         lat, lon = pos.latitude, pos.longitude
         phi, lam = radians(lat), radians(lon)
     except AttributeError: 
-        phi, lam = pos 
-    return phi, lam
+        try: 
+            phi, lam = pos.phi, pos.lam
+        except AttributeError: 
+            phi, lam = pos 
+            
+    return RadCoords(phi, lam)
 
+def get_rad_bearing(pos):
+    try:
+        lat, lon, bearing = pos.latitude, pos.longitude, pos.bearing
+        phi, lam, bearing = radians(lat), radians(lon), radians(bearing)
+    except AttributeError: 
+        try: 
+            phi, lam, bearing = pos.phi, pos.lam, pos.theta
+        except AttributeError: 
+            phi, lam, bearing = pos 
+
+    return RadBearing(phi, lam, bearing)
+
+def to_n_vector(pos):
+    phi, lam = get_rad_coords(pos)
+    cosp = cos(phi)
+    return Vector(cosp * cos(lam), cosp * sin(lam), sin(phi))
+
+def from_n_vector(vec):
+    x, y, z = vec 
+    phi = arctan2(z, np.sqrt(x**2 + y**2))
+    lam = arctan2(y, x)
+    return RadCoords(phi, lam)
+
+def to_axis(pos):
+    phi, lam, theta = get_rad_bearing(pos)
+    sinp = sin(phi)
+    cosp = cos(phi)
+    sinl = sin(lam)
+    cosl = cos(lam)
+    sint = sin(theta)
+    cost = cos(theta)
+    x = sinl * cost - sinp * cosl * sint
+    y = - cosl * cost - sinp * sinl * sint
+    z = cosp * sint 
+    return Vector(x, y, z)
 
 def haversine(pos1, pos2):
     phi1, lam1 = get_rad_coords(pos1)
@@ -52,3 +118,44 @@ def estimate_bearing(positions, pos, tol=0.01):
     dist = haversine_km(positions, pos)
     weights = np.exp( - np.square(dist / tol)/2)
     return np.average(positions.bearing % 180, weights=weights)
+
+
+def path_intersections(pos1, pos2):
+    gc1s = to_axis(pos1)
+    gc2s = to_axis(pos2)
+    intersections = cross(gc1s, gc2s)
+    return from_n_vector(intersections)
+
+
+def find_crossing_times(positions, loc, thresh=0.05):
+    close_points = haversine_km(positions, loc) < thresh
+
+    close_positions = positions[close_points].copy()
+    close_positions.bearing = loc.bearing + 90
+
+    intersections = pd.DataFrame.from_dict(
+        path_intersections(close_positions, loc)._asdict()
+    )
+    bearings = bearing(intersections, loc)
+    sgns = np.sign(np.cos(np.radians(bearings - loc.bearing)))
+    crossings = bearings.index[sgns != sgns.shift(fill_value=sgns.iloc[0])]
+        
+    def weight(*ds):
+        return ds[0] / sum(ds)
+
+    crossing_weights = pd.Series([
+        weight(*haversine(intersections.loc[i:i+2], loc))
+        for i in crossings
+    ], 
+        index=crossings
+    )
+
+    time_deltas = (
+        positions.time[crossings + 1].values 
+        - positions.time[crossings].values
+    )
+    crossing_times = (
+        positions.time[crossings] + time_deltas * crossing_weights 
+    )
+
+    return crossing_times
