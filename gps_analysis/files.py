@@ -4,7 +4,7 @@ import gpxpy
 import pandas as pd
 import numpy as np
 
-from . import sphere
+from . import geodesy
 
 
 
@@ -26,10 +26,10 @@ def parse_gpx_data(gpx_data):
         for point in segment.points
     )
     positions['timeElapsed'] = positions.time - positions.time[0]
-    positions['distanceDelta'] = sphere.haversine_km(positions, positions.shift())
+    positions['distanceDelta'] = geodesy.haversine_km(positions, positions.shift())
     positions.loc[0, 'distanceDelta'] = 0
     positions['distance'] = np.cumsum(positions.distanceDelta)
-    positions['bearing_r'] = sphere.rad_bearing(positions, positions.shift())
+    positions['bearing_r'] = geodesy.rad_bearing(positions, positions.shift())
     positions.loc[0, 'bearing_r'] = positions.bearing_r[1]
     positions['bearing'] = np.rad2deg(positions.bearing_r)
 

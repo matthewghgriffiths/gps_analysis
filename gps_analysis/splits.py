@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from . import sphere
+from . import geodesy
 from .utils import strfmtsplit
 
 
@@ -12,8 +12,8 @@ _STANDARD_DISTANCES = {
     '1km': 1,
     '1.5km': 1.5,
     '2km': 2,
-    '3km': 2,
-    '5km': 2,
+    '3km': 3,
+    '5km': 5,
 }
 
 
@@ -44,15 +44,15 @@ def get_location_timings(positions, locations, thresh=0.1):
 
 
 def find_crossing_times(positions, loc, thresh=0.05):
-    close_points = sphere.haversine_km(positions, loc) < thresh
+    close_points = geodesy.haversine_km(positions, loc) < thresh
 
     close_positions = positions[close_points].copy()
     close_positions.bearing = loc.bearing + 90
 
     intersections = pd.DataFrame.from_dict(
-        sphere.path_intersections(close_positions, loc)._asdict()
+        geodesy.path_intersections(close_positions, loc)._asdict()
     )
-    bearings = sphere.bearing(intersections, loc)
+    bearings = geodesy.bearing(intersections, loc)
     sgns = np.sign(np.cos(np.radians(bearings - loc.bearing)))
     crossings = bearings.index[sgns != sgns.shift(fill_value=sgns.iloc[0])]
         
@@ -60,7 +60,7 @@ def find_crossing_times(positions, loc, thresh=0.05):
         return ds[0] / sum(ds)
 
     crossing_weights = pd.Series([
-        weight(*sphere.haversine(intersections.loc[i:i+2], loc))
+        weight(*geodesy.haversine(intersections.loc[i:i+2], loc))
         for i in crossings
     ], 
         index=crossings
