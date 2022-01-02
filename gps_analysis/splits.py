@@ -126,4 +126,3 @@ def find_all_best_times(positions, distances=None):
     },
         names = ('length', 'distance'),
     )
-    

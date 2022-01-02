@@ -6,10 +6,15 @@ import numpy as np
 
 from . import sphere
 
+
+
 def load_gpx(filename):
     with open(filename, 'r') as f:
         gpx_data = gpxpy.parse(f)
 
+    return parse_gpx_data(gpx_data)
+
+def parse_gpx_data(gpx_data):
     positions = pd.DataFrame.from_records(
         {
             'latitude': point.latitude, 

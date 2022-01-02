@@ -2,8 +2,11 @@
 import os 
 import getpass
 import logging
+from datetime import datetime
 from typing import Optional 
 
+import pandas as pd
+import gpxpy
 from garminconnect import (
     Garmin,
     GarminConnectConnectionError,
@@ -11,12 +14,27 @@ from garminconnect import (
     GarminConnectAuthenticationError,
 )
 
-from .utils import map_concurrent
+from .utils import map_concurrent, unflatten_json, strfmtsplit
+from .files import parse_gpx_data
+from . import splits
 
 
 logger = logging.getLogger(__name__)
 
 _API: Optional[Garmin] = None
+
+_ACTIVITY_TYPES = {
+    'cycling': {
+        "activityType": "cycling",
+    },
+    'running': {
+        "activityType": "running",
+    },
+    'rowing': {
+        "activityType": "other",
+        'activitySubType': 'rowing'
+    }
+}
 
 def login(email_address=None, password=None):
     if email_address is None:
@@ -58,7 +76,7 @@ def download_activities(activities, folder='./', max_workers=4, api=None, show_p
 
     activity_ids = (act["activityId"] for act in activities)
     inputs = {
-        act_id: (act_id, os.path.join(folder, f"{str(act_id)}.gpx"))
+        act_id: (act_id, os.path.join(folder, f"{str(act_id)}.gpx"), api)
         for act_id in activity_ids
     }
     return map_concurrent(
@@ -66,3 +84,96 @@ def download_activities(activities, folder='./', max_workers=4, api=None, show_p
         threaded=True, max_workers=max_workers, 
         show_progress=show_progress, raise_on_err=False
     )
+
+def load_activity(activity_id, api=None):
+    api = api or _API
+
+    f = api.download_activity(
+        activity_id, dl_fmt=api.ActivityDownloadFormat.GPX)
+    return parse_gpx_data(gpxpy.parse(f))
+
+def load_activities(activity_ids, max_workers=4, api=None, show_progress=True):
+    inputs = {
+        act_id: (act_id, api) for act_id in activity_ids
+    }
+    return map_concurrent(
+        load_activity, inputs, 
+        threaded=True, max_workers=max_workers, 
+        show_progress=show_progress, raise_on_err=False
+    )
+
+def get_activities(start=0, limit=20, *, api=None, activityType=None, startDate=None, endDate=None, minDistance=None, maxDistance=None, **params):
+    if activityType:
+        if activityType in _ACTIVITY_TYPES:
+            params.update(_ACTIVITY_TYPES[activityType])
+        else:
+            params['activityType'] = activityType
+
+    if startDate:
+        if isinstance(startDate, datetime):
+            startDate = startDate.strftime("%Y-%M-%d")
+        params['startDate'] = startDate
+
+    if endDate:
+        if isinstance(endDate, datetime):
+            endDate = endDate.strftime("%Y-%M-%d")
+        params['endDate'] = endDate
+    
+    if minDistance: params['minDistance'] = str(minDistance)
+    if maxDistance: params['maxDistance'] = str(maxDistance)
+
+    return activities_to_dataframe(
+        _get_activities(start=start, limit=limit, api=api, **params)
+    )
+
+
+def _get_activities(start=0, limit=20, *, api=None, **params):
+    api = api or _API
+    url = api.garmin_connect_activities
+    params['start'] = start 
+    params['limit'] = limit 
+
+    return api.modern_rest_client.get(url, params=params).json()
+    
+
+def activities_to_dataframe(activities):
+    df = pd.DataFrame.from_records(
+        [dict(unflatten_json(act)) for act in activities]
+    )
+    depth = max(map(len, df.columns))
+    df.columns = pd.MultiIndex.from_tuples([
+        k + ('',) * (depth - len(k)) for k in df.columns
+    ])
+    return df
+
+
+def activity_data_to_excel(
+        activities, activity_data=None, xlpath='garmin_data.xlsx', 
+        api=None, max_workers=4, show_progress=True
+):
+    if activity_data is None:
+        activity_data, _ = load_activities(
+            activities.activityId, max_workers=max_workers, 
+            show_progress=show_progress, api=api)
+
+    activity_td = activities[
+        ['activityId', 'startTimeLocal', 'distance']
+    ].sort_values(by='startTimeLocal', ascending=False)
+    activity_td.columns = ['activityId', 'startTime', 'totalDistance']
+
+    activity_td.totalDistance = (activity_td.totalDistance/1000).round(1)
+
+    activity_best_times = pd.concat({
+        actid: splits.find_all_best_times(activity_data[actid])
+        for actid in activity_td.activityId
+    }, 
+        names = ('activityId', 'length', 'distance')
+    )
+
+    best_times = activity_best_times.reset_index().join(
+        activity_td.set_index('activityId'), on='activityId').set_index(
+        ['activityId', 'startTime', 'totalDistance', 'length', 'distance']
+    )
+    with pd.ExcelWriter(xlpath) as xlf:
+        activities.set_index('activityId').to_excel(xlf, "activities")
+        best_times.applymap(strfmtsplit).to_excel(xlf, "best_times")

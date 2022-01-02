@@ -23,6 +23,16 @@ def strfmtsplit(tdelta, hours=False):
     else:
         return _MSH_STR_FORMAT.format(**components)
 
+def unflatten_json(entity, key=()):
+    if isinstance(entity, dict):
+        for k, val in entity.items():
+            yield from unflatten_json(val, key + (k,))
+    elif isinstance(entity, list):
+        for i, elem in enumerate(entity):
+            yield from unflatten_json(elem, key + (i,))
+    else:
+        yield key, entity
+
 K = TypeVar("K")
 A = TypeVar('A')
 V = TypeVar('V')
