@@ -3,16 +3,7 @@ import numpy as np
 import pandas as pd
 
 from . import sphere
-
-_MSH_STR_FORMAT = "{minutes:02d}:{seconds:02d}.{hundredths:02d}"
-_HMSH_STR_FORMAT = "{hours}:{minutes:02d}:{seconds:02d}.{hundredths:02d}"
-def strfmtsplit(tdelta, hours=False):
-    components = tdelta.components._asdict()
-    components['hundredths'] = tdelta.components.milliseconds // 10
-    if tdelta.components.hours or hours:
-        return _HMSH_STR_FORMAT.format(**components)
-    else:
-        return _MSH_STR_FORMAT.format(**components)
+from .utils import strfmtsplit
 
 
 _STANDARD_DISTANCES = {
@@ -25,6 +16,7 @@ _STANDARD_DISTANCES = {
     '5km': 2,
 }
 
+
 def find_all_crossing_times(positions, locations, thresh=0.1):
     return pd.concat({
         loc: find_crossing_times(positions, pos)
@@ -32,6 +24,7 @@ def find_all_crossing_times(positions, locations, thresh=0.1):
     },
         names = ['location', 'distance']
     ).sort_index(level=1)
+
 
 def get_location_timings(positions, locations, thresh=0.1):
     loc_times = find_all_crossing_times(positions, locations, thresh=thresh)
@@ -123,6 +116,7 @@ def find_best_times(positions, distance):
     })
     best_timesplits.index = distances[best].round(3)
     return best_timesplits
+
 
 def find_all_best_times(positions, distances=None):
     distances = distances or _STANDARD_DISTANCES

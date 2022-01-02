@@ -1,8 +1,12 @@
+"""
+Routines for performing geodesy
 
+based off https://www.movable-type.co.uk/scripts/latlong-vectors.html
+"""
 from typing import NamedTuple
 
 import numpy as np 
-from numpy import sin, cos, arcsin, arccos, arctan2, sqrt, pi, radians
+from numpy import sin, cos, arctan2, sqrt, pi, radians
 
 class LatLon(NamedTuple):
     latitude: float
@@ -49,6 +53,7 @@ def get_rad_coords(pos):
             
     return RadCoords(phi, lam)
 
+
 def get_rad_bearing(pos):
     try:
         lat, lon, bearing = pos.latitude, pos.longitude, pos.bearing
@@ -61,16 +66,19 @@ def get_rad_bearing(pos):
 
     return RadBearing(phi, lam, bearing)
 
+
 def to_n_vector(pos):
     phi, lam = get_rad_coords(pos)
     cosp = cos(phi)
     return Vector(cosp * cos(lam), cosp * sin(lam), sin(phi))
+
 
 def from_n_vector(vec):
     x, y, z = vec 
     phi = arctan2(z, np.sqrt(x**2 + y**2))
     lam = arctan2(y, x)
     return RadCoords(phi, lam)
+
 
 def to_axis(pos):
     phi, lam, theta = get_rad_bearing(pos)
@@ -84,6 +92,7 @@ def to_axis(pos):
     y = - cosl * cost - sinp * sinl * sint
     z = cosp * sint 
     return Vector(x, y, z)
+
 
 def haversine(pos1, pos2):
     phi1, lam1 = get_rad_coords(pos1)
