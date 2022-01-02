@@ -14,6 +14,8 @@ _STANDARD_DISTANCES = {
     '2km': 2,
     '3km': 3,
     '5km': 5,
+    '7km': 7, 
+    '10km': 10, 
 }
 
 
@@ -35,10 +37,10 @@ def get_location_timings(positions, locations, thresh=0.1):
         columns=loc_times.index
     )
     distances = loc_times.index.get_level_values(1)
-    dist_diffs = distances.values[None, :] - distances.values[:, None]
+    dist_diffs = 2 * (distances.values[None, :] - distances.values[:, None])
     dist_diffs[np.triu_indices(len(distances))] = 1
 
-    loc_timings /= 2 * dist_diffs
+    loc_timings /= dist_diffs
 
     return loc_timings
 
@@ -54,6 +56,9 @@ def find_crossing_times(positions, loc, thresh=0.05):
     )
     bearings = geodesy.bearing(intersections, loc)
     sgns = np.sign(np.cos(np.radians(bearings - loc.bearing)))
+    if not sgns.size:
+        return pd.Series([])
+
     crossings = bearings.index[sgns != sgns.shift(fill_value=sgns.iloc[0])]
         
     def weight(*ds):

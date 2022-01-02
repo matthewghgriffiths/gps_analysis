@@ -12,19 +12,31 @@ class LatLon(NamedTuple):
     latitude: float
     longitude: float 
 
+    def to_rad(self):
+        return RadCoords(*map(np.deg2rad, self))
+
 class LatLonBear(NamedTuple):
     latitude: float
     longitude: float 
     bearing: float
 
+    def to_rad(self):
+        return RadBearing(*map(np.deg2rad, self))
+
 class RadCoords(NamedTuple):
     phi: float
     lam: float 
+
+    def to_latlon(self):
+        return LatLon(*map(np.rad2deg, self))
 
 class RadBearing(NamedTuple):
     phi: float
     lam: float 
     theta: float 
+
+    def to_latlon(self):
+        return LatLonBear(*map(np.rad2deg, self))
 
 def cross(a, b):
     a1, a2, a3 = a 
@@ -133,3 +145,15 @@ def path_intersections(pos1, pos2):
     gc2s = to_axis(pos2)
     intersections = cross(gc1s, gc2s)
     return from_n_vector(intersections)
+
+
+def follow_bearing(pos1, d):
+    phi, lam, theta = get_rad_bearing(pos1)
+    d /= _AVG_EARTH_RADIUS_KM
+    phi2 = np.arcsin(
+        np.sin(phi)*np.cos(d) + np.cos(phi)*np.sin(d)*np.cos(theta))
+    lam2 = lam + np.arctan2(
+        np.sin(theta)*np.sin(d)*np.cos(phi), 
+        np.cos(d)-np.sin(phi)*np.sin(phi2)
+    )
+    return RadCoords(phi2, lam2)
