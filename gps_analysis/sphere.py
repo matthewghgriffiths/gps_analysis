@@ -3,7 +3,6 @@ from typing import NamedTuple
 
 import numpy as np 
 from numpy import sin, cos, arcsin, arccos, arctan2, sqrt, pi, radians
-import pandas as pd
 
 class LatLon(NamedTuple):
     latitude: float
@@ -33,7 +32,7 @@ class Vector(NamedTuple):
     y: float
     z: float
 
-    cross = cross
+    cross = cross # type: ignore
 
 _AVG_EARTH_RADIUS_KM = 6371.0088
 
@@ -125,37 +124,3 @@ def path_intersections(pos1, pos2):
     gc2s = to_axis(pos2)
     intersections = cross(gc1s, gc2s)
     return from_n_vector(intersections)
-
-
-def find_crossing_times(positions, loc, thresh=0.05):
-    close_points = haversine_km(positions, loc) < thresh
-
-    close_positions = positions[close_points].copy()
-    close_positions.bearing = loc.bearing + 90
-
-    intersections = pd.DataFrame.from_dict(
-        path_intersections(close_positions, loc)._asdict()
-    )
-    bearings = bearing(intersections, loc)
-    sgns = np.sign(np.cos(np.radians(bearings - loc.bearing)))
-    crossings = bearings.index[sgns != sgns.shift(fill_value=sgns.iloc[0])]
-        
-    def weight(*ds):
-        return ds[0] / sum(ds)
-
-    crossing_weights = pd.Series([
-        weight(*haversine(intersections.loc[i:i+2], loc))
-        for i in crossings
-    ], 
-        index=crossings
-    )
-
-    time_deltas = (
-        positions.time[crossings + 1].values 
-        - positions.time[crossings].values
-    )
-    crossing_times = (
-        positions.time[crossings] + time_deltas * crossing_weights 
-    )
-
-    return crossing_times
