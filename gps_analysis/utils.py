@@ -17,7 +17,7 @@ _pyodide = "pyodide" in sys.modules
 
 _MSH_STR_FORMAT = "{minutes:d}:{seconds:02d}.{hundredths:02d}"
 _HMSH_STR_FORMAT = "{hours}:{minutes:02d}:{seconds:02d}.{hundredths:02d}"
-def strfmtsplit(tdelta, hours=False):
+def strfsplit(tdelta, hours=False):
     components = tdelta.components._asdict()
     components['hundredths'] = tdelta.components.milliseconds // 10
     if tdelta.components.hours or hours:

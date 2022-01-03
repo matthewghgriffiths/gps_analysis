@@ -4,6 +4,7 @@ import getpass
 import logging
 from datetime import datetime
 from typing import Optional 
+from io import BytesIO
 
 import pandas as pd
 import gpxpy
@@ -14,8 +15,8 @@ from garminconnect import (
     GarminConnectAuthenticationError,
 )
 
-from .utils import map_concurrent, unflatten_json, strfmtsplit
-from .files import parse_gpx_data
+from .utils import map_concurrent, unflatten_json, strfsplit
+from .files import parse_gpx_data, read_fit_zipfile
 from . import splits
 
 
@@ -35,6 +36,9 @@ _ACTIVITY_TYPES = {
         'activitySubType': 'rowing'
     }
 }
+
+def get_api(api=None):
+    return api or _API or login()
 
 def login(email_address=None, password=None):
     if email_address is None:
@@ -61,7 +65,7 @@ def login(email_address=None, password=None):
 
 
 def download_activity(activity_id, path=None, api=None):
-    api = api or _API
+    api = get_api(api)
 
     gpx_data = api.download_activity(activity_id, dl_fmt=api.ActivityDownloadFormat.GPX)
     path = path or f"./{str(activity_id)}.gpx"
@@ -72,7 +76,7 @@ def download_activity(activity_id, path=None, api=None):
 
 
 def download_activities(activities, folder='./', max_workers=4, api=None, show_progress=True):
-    api = api or _API 
+    api = get_api(api)
 
     activity_ids = (act["activityId"] for act in activities)
     inputs = {
@@ -86,18 +90,38 @@ def download_activities(activities, folder='./', max_workers=4, api=None, show_p
     )
 
 def load_activity(activity_id, api=None):
-    api = api or _API
+    api = get_api(api)
 
     f = api.download_activity(
         activity_id, dl_fmt=api.ActivityDownloadFormat.GPX)
     return parse_gpx_data(gpxpy.parse(f))
 
 def load_activities(activity_ids, max_workers=4, api=None, show_progress=True):
+    api = get_api(api)
     inputs = {
         act_id: (act_id, api) for act_id in activity_ids
     }
     return map_concurrent(
         load_activity, inputs, 
+        threaded=True, max_workers=max_workers, 
+        show_progress=show_progress, raise_on_err=False
+    )
+
+
+def load_fit_activity(activity_id, api=None):
+    api = get_api(api)
+
+    zip_data = api.download_activity(
+        activity_id, dl_fmt=api.ActivityDownloadFormat.ORIGINAL)
+    return read_fit_zipfile(BytesIO(zip_data))
+
+def load_fit_activities(activity_ids, max_workers=4, api=None, show_progress=True):
+    api = get_api(api)
+    inputs = {
+        act_id: (act_id, api) for act_id in activity_ids
+    }
+    return map_concurrent(
+        load_fit_activity, inputs, 
         threaded=True, max_workers=max_workers, 
         show_progress=show_progress, raise_on_err=False
     )
@@ -128,7 +152,7 @@ def get_activities(start=0, limit=20, *, api=None, activityType=None, startDate=
 
 
 def _get_activities(start=0, limit=20, *, api=None, **params):
-    api = api or _API
+    api = get_api(api)
     url = api.garmin_connect_activities
     params['start'] = start 
     params['limit'] = limit 
@@ -176,4 +200,4 @@ def activity_data_to_excel(
     )
     with pd.ExcelWriter(xlpath) as xlf:
         activities.set_index('activityId').to_excel(xlf, "activities")
-        best_times.applymap(strfmtsplit).to_excel(xlf, "best_times")
+        best_times.applymap(strfsplit).to_excel(xlf, "best_times")

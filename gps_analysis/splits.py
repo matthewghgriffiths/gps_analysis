@@ -1,9 +1,11 @@
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 from . import geodesy
-from .utils import strfmtsplit
+from .utils import strfsplit
 
 
 _STANDARD_DISTANCES = {
@@ -18,34 +20,61 @@ _STANDARD_DISTANCES = {
     '10km': 10, 
 }
 
+_DATA_PATH = (Path(__file__) / "../../data").resolve()
 
-def find_all_crossing_times(positions, locations, thresh=0.1):
-    return pd.concat({
+_LOCATION_DATA = {
+    'cam': _DATA_PATH / 'cam_locations.tsv',
+    'ely': _DATA_PATH / 'ely_locations.tsv',
+    'cam': _DATA_PATH / 'cav_locations.tsv',
+}
+
+def load_locations(loc=None):
+    if loc is None:
+        loc = _LOCATION_DATA
+    elif loc in _LOCATION_DATA:
+        loc = [loc]
+        
+    return pd.concat([
+        pd.read_table(_LOCATION_DATA[l], index_col=0) for l in loc
+    ])#.set_index('location', drop=True)
+
+
+def find_all_crossing_times(positions, locations=None, thresh=0.15):
+    locations = load_locations() if locations is None else locations
+
+    times = pd.concat({
         loc: find_crossing_times(positions, pos)
         for loc, pos in locations.iterrows()
     },
         names = ['location', 'distance']
-    ).sort_index(level=1)
+    ).sort_index(level=1).reset_index()
+    times['leg'] = (times.location == times.location.shift()).cumsum()
+
+    return times.set_index(['leg', 'location', 'distance'])[0]
 
 
-def get_location_timings(positions, locations, thresh=0.1):
-    loc_times = find_all_crossing_times(positions, locations, thresh=thresh)
+def get_location_timings(positions, locations=None, thresh=0.15):
+    locations = load_locations() if locations is None else locations
+
+    loc_times = find_all_crossing_times(
+        positions, locations, thresh=thresh
+    )
     times = loc_times.values
     loc_timings = pd.DataFrame(
-        times[None, :] - times[:, None],
+        times[:, None] - times[None, :],
         index=loc_times.index, 
         columns=loc_times.index
     )
-    distances = loc_times.index.get_level_values(1)
-    dist_diffs = 2 * (distances.values[None, :] - distances.values[:, None])
-    dist_diffs[np.triu_indices(len(distances))] = 1
+    distances = loc_times.index.get_level_values('distance')
+    dist_diffs = 2 * (distances.values[:, None] - distances.values[None, :])
+    dist_diffs[np.tril_indices(len(distances))] = 1
 
     loc_timings /= dist_diffs
 
-    return loc_timings
+    return pd.concat({'splits': pd.concat({'times': loc_timings})}, axis=1)
 
 
-def find_crossing_times(positions, loc, thresh=0.05):
+def find_crossing_times(positions, loc, thresh=0.15):
     close_points = geodesy.haversine_km(positions, loc) < thresh
 
     close_positions = positions[close_points].copy()
