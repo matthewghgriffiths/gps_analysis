@@ -137,7 +137,10 @@ def bearing(pos1, pos2):
 def estimate_bearing(positions, pos, tol=0.01):
     dist = haversine_km(positions, pos)
     weights = np.exp( - np.square(dist / tol)/2)
-    return np.average(positions.bearing % 180, weights=weights)
+    if weights.sum() == 0:
+        return np.nan
+    else:
+        return np.average(positions.bearing % 180, weights=weights)
 
 
 def path_intersections(pos1, pos2):

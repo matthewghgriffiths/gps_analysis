@@ -25,7 +25,8 @@ _DATA_PATH = (Path(__file__) / "../../data").resolve()
 _LOCATION_DATA = {
     'cam': _DATA_PATH / 'cam_locations.tsv',
     'ely': _DATA_PATH / 'ely_locations.tsv',
-    'cam': _DATA_PATH / 'cav_locations.tsv',
+    'cav': _DATA_PATH / 'cav_locations.tsv',
+    'tideway': _DATA_PATH / 'tideway_locations.tsv',
 }
 
 def load_locations(loc=None):
