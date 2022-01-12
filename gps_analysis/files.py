@@ -28,6 +28,13 @@ def parse_gpx_data(gpx_data):
         for segment in track.segments 
         for point in segment.points
     )
+    if positions.empty:
+        return pd.DataFrame(
+            [], columns=[
+                'latitude', 'longitude', 'time', 'timeElapsed', 
+                'distanceDelta', 'distance', 'bearing_r', 'bearing'
+        ]) 
+
     last = positions.index[-1]
     positions['timeElapsed'] = positions.time - positions.time[0]
     positions['distanceDelta'] = geodesy.haversine_km(positions, positions.shift(-1))

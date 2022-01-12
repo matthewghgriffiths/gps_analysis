@@ -172,8 +172,9 @@ def activities_to_dataframe(activities):
 
 
 def activity_data_to_excel(
-        activities, activity_data=None, xlpath='garmin_data.xlsx', 
-        api=None, max_workers=4, show_progress=True
+        activities, activity_data=None, locations=None, 
+        xlpath='garmin_data.xlsx', api=None, max_workers=4, 
+        show_progress=True
 ):
     if activity_data is None:
         activity_data, _ = load_activities(
@@ -185,11 +186,14 @@ def activity_data_to_excel(
     ].sort_values(by='startTimeLocal', ascending=False)
     activity_td.columns = ['activityId', 'startTime', 'totalDistance']
 
+    # reorder activity_data
+    activity_data = {i: activity_data[i] for i in activity_td.activityId}
+
     activity_td.totalDistance = (activity_td.totalDistance/1000).round(1)
 
     activity_best_times = pd.concat({
-        actid: splits.find_all_best_times(activity_data[actid])
-        for actid in activity_td.activityId
+        actid: splits.find_all_best_times(data)
+        for actid, data in activity_data.items() if not data.empty
     }, 
         names = ('activityId', 'length', 'distance')
     )
@@ -198,6 +202,23 @@ def activity_data_to_excel(
         activity_td.set_index('activityId'), on='activityId').set_index(
         ['activityId', 'startTime', 'totalDistance', 'length', 'distance']
     )
+
+    sheet_names = pd.Series(
+        activities.startTimeLocal.str.split(" ", expand=True)[0].str.cat(
+            activities.activityId.astype(str), sep="_"
+        ).values,
+        index = activities.activityId
+    )
+    location_timings = {
+        actid: splits.get_location_timings(data, locations)
+        for actid, data in activity_data.items() if not data.empty
+    }
+
     with pd.ExcelWriter(xlpath) as xlf:
         activities.set_index('activityId').to_excel(xlf, "activities")
         best_times.applymap(strfsplit).to_excel(xlf, "best_times")
+        for actid, timings in location_timings.items():
+            timings.applymap(strfsplit).to_excel(
+                xlf, sheet_names.loc[actid])
+
+        

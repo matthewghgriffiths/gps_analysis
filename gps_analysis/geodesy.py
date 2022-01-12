@@ -8,6 +8,7 @@ from typing import NamedTuple
 import numpy as np 
 from numpy import sin, cos, arctan2, sqrt, pi, radians
 
+
 class LatLon(NamedTuple):
     latitude: float
     longitude: float 

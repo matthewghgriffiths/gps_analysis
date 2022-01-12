@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from . import geodesy
-from .utils import strfsplit
+from .utils import is_pareto_efficient
 
 
 _STANDARD_DISTANCES = {
@@ -161,3 +161,19 @@ def find_all_best_times(positions, distances=None):
     },
         names = ('length', 'distance'),
     )
+
+def calc_pareto_front(positions):
+    i, j = np.triu_indices(len(positions), 1)
+
+    time_diffs = (
+        positions.timeElapsed[j].dt.total_seconds().values - 
+        positions.timeElapsed[i].dt.total_seconds().values
+    )
+    dist_diffs =(
+        positions.distance[j].values - positions.distance[i].values)
+    speeds = 1000 * np.nan_to_num(dist_diffs / time_diffs)
+    mask = is_pareto_efficient(np.c_[-dist_diffs, -speeds])
+    return pd.DataFrame.from_dict({
+        'distance': dist_diffs[mask],
+        'speeds': speeds[mask], 
+    })
