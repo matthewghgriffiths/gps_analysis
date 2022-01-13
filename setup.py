@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='gps_analysis',
-    version='0.0.4',
+    version='0.0.5',
     description='A python library for analysing gps data',
     author='Matthew Grifiths',
     author_email='matthewghgriffiths@gmail.com',
