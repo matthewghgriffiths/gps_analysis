@@ -1,10 +1,12 @@
 
 import os 
+import sys
 import getpass
 import logging
 from datetime import datetime
 from typing import Optional 
 from io import BytesIO
+import argparse
 
 import pandas as pd
 import gpxpy
@@ -221,4 +223,89 @@ def activity_data_to_excel(
             timings.applymap(strfsplit).to_excel(
                 xlf, sheet_names.loc[actid])
 
-        
+
+def get_parser():
+    def date(s):
+        return datetime.strptime(s, '%Y-%m-%d')
+
+    parser = argparse.ArgumentParser(
+        description='Analyse recent gps data')
+    parser.add_argument(
+        'n', 
+        type=int, default=5, nargs='?',
+        help='maximum number of activities to load')
+    parser.add_argument(
+        'outfile', 
+        type=str, default='garmin.xlsx', nargs='?', 
+        help='path of output excel spreadsheet'
+    )
+    parser.add_argument(
+        '-u', '--user', '--email',
+        type=str, nargs='?',
+        help='Email address to use'
+    )
+    parser.add_argument(
+        '-p', '--password',
+        type=str, nargs='?',
+        help='Password'
+    )
+    parser.add_argument(
+        '-a', '--activity', 
+        type=str, nargs='?',
+        help='activity type, options: rowing, cycling, running'
+    )
+    parser.add_argument(
+        '--min-distance',
+        type=int, nargs='?',
+        help='minimum distance of activity (in km)'
+    )
+    parser.add_argument(
+        '--max-distance',
+        type=int, nargs='?',
+        help='maximum distance of activity (in km)'
+    )
+    parser.add_argument(
+        '--start-date',
+        type=date,
+        help='start date to search for activities from in YYYY-MM-DD format'
+    )
+    parser.add_argument(
+        '--end-date',
+        type=date,
+        help='start date to search for activities from in YYYY-MM-DD format'
+    )
+    return parser
+
+
+def parse_args(args):
+    return get_parser().parse_args(args)
+
+
+def run(args=None):
+    options = parse_args(args)
+
+    api = login(options.user, options.password)
+
+    activities = get_activities(
+        0, options.n, 
+        activityType=options.activity, 
+        minDistance=options.min_distance, 
+        maxDistance=options.max_distance, 
+        startDate=options.start_date, 
+        endDate=options.end_date,
+        api=api
+    )
+    activity_data, errors = load_activities(
+        activities.activityId,
+        api=api
+    )
+
+    activity_data_to_excel(
+        activities, activity_data, 
+        xlpath=options.outfile)
+
+def main():
+    run(sys.argv[1:])
+
+if __name__ == "__main__":
+    main()

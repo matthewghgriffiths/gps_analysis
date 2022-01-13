@@ -16,7 +16,7 @@ setup(
     packages=['gps_analysis'],
     entry_points={
         'console_scripts': [
-            'gps_analysis = world_rowing.cli:run [CLI]'
+            'gps_analysis = world_rowing.garmin:main [GARMIN]'
         ]
     },
     license='MIT', 
@@ -30,9 +30,7 @@ setup(
         'fitparse',
     ],
     extras_require={
-        'CLI': ['cmd2>=2.0.0'],
-        'CLI': ['garminconnect'],
-        'REQ': ['requests'], # Requests is not required if using pyodide
+        'GARMIN': ['garminconnect'],
     },
     python_requires=">=3.8",
     package_data={
