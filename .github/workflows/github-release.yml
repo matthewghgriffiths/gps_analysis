@@ -52,7 +52,7 @@ jobs:
           spec: "garmin.py"
 
       - name: Release Windows Executable
-        uses: softprops/action-gh-release@v1
+        uses: actions/upload-artifact@v2
         with:
           name: garmin-win
           files: ./dist/windows
