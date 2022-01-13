@@ -1,0 +1,6 @@
+fitparse
+gpxpy
+pandas
+numpy
+scipy
+tqdm
