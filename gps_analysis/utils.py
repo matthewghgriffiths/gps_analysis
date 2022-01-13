@@ -12,8 +12,6 @@ except ModuleNotFoundError:
 
 import numpy as np
 
-_pyodide = "pyodide" in sys.modules
-
 
 _MSH_STR_FORMAT = "{minutes:d}:{seconds:02d}.{hundredths:02d}"
 _HMSH_STR_FORMAT = "{hours}:{minutes:02d}:{seconds:02d}.{hundredths:02d}"
@@ -148,45 +146,3 @@ def map_concurrent(
                     status['nerrors'] = len(errors)
 
     return output, errors
-    
-
-def _map_singlethreaded(
-    func: Callable[..., V],
-    inputs: Dict[K, Tuple],
-    threaded: bool = True,
-    max_workers: int = 10,
-    show_progress: bool = True,
-    raise_on_err: bool = False,
-    **kwargs,
-) -> Tuple[Dict[K, V], Dict[K, Exception]]:
-    output = {}
-    errors = {}
-
-    status: Dict[str, Any] = {}
-    if show_progress:
-        from tqdm.auto import tqdm
-        pbar = tqdm(total=len(inputs))
-    else:
-        pbar = nullcontext()
-
-    with pbar:
-        for key, args in inputs.items():
-            try:
-                output[key] = func(*args, **kwargs)
-            except Exception as exc:
-                if raise_on_err:
-                    raise exc
-                else:
-                    logging.warning(f"{key} experienced error {exc}")
-                    errors[key] = exc
-                    status['nerrors'] = len(errors)
-
-            if show_progress:
-                pbar.update(1)
-                pbar.set_postfix(**status)
-
-    return output, errors
-
-
-if _pyodide:
-    map_concurrent = _map_singlethreaded

@@ -3,5 +3,4 @@ garminconnect
 gpxpy
 pandas
 numpy
-scipy
 tqdm

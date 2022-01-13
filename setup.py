@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='gps_analysis',
-    version='0.0.3',
+    version='0.0.4',
     description='A python library for analysing gps data',
     author='Matthew Grifiths',
     author_email='matthewghgriffiths@gmail.com',
@@ -23,11 +23,11 @@ setup(
     long_description=long_description, 
     install_requires=[
         'numpy',
-        'scipy',
         'pandas',
         'matplotlib',
         'gpxpy',
         'fitparse',
+        'tqdm',
     ],
     extras_require={
         'GARMIN': ['garminconnect'],
