@@ -1,4 +1,5 @@
 fitparse
+garminconnect
 gpxpy
 pandas
 numpy
