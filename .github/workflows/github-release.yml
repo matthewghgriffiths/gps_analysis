@@ -41,7 +41,12 @@ jobs:
         uses: JackMcKew/pyinstaller-action-windows@main
         with:
           path: "."
-          spec: "garmin.py"
+          spec: "garmin.spec"
+
+      - name: Zip windows executable
+        uses: montudor/action-zip@v1
+        with:
+          args: zip -qq -r ./dist/garmin-analysis-windows.zip ./dist/windows
           
       - uses: actions/upload-artifact@v2
         with:
@@ -53,8 +58,7 @@ jobs:
         id: release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            ./dist/*
+          files: ./dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
 
