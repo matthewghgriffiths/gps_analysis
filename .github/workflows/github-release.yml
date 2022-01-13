@@ -55,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: garmin-win
-          files: ./dist/windows
+          path: ./dist/windows
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
 
