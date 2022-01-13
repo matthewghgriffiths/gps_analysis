@@ -2,5 +2,6 @@ fitparse
 garminconnect
 gpxpy
 pandas
+openpyxl
 numpy
 tqdm
