@@ -41,16 +41,20 @@ jobs:
         uses: JackMcKew/pyinstaller-action-windows@main
         with:
           path: "."
-          spec: "garmin.spec"
+          spec: "analysis.spec"
 
-      - name: Zip windows executable
+      - name: Install zip
         uses: montudor/action-zip@v1
-        with:
-          args: zip -qq -r ./dist/garmin-analysis-windows.zip ./dist/windows
+        # with:
+        #   args: zip -qq -r ./dist/gps-analysis-windows.zip ./dist/windows
           
+      - name: Zip windows executable
+        run: zip -qq -r gps-analysis-windows.zip dist/windows
+        working-directory: ./dist
+
       - uses: actions/upload-artifact@v2
         with:
-          name: garmin-analysis-windows
+          name: gpx-analysis-windows
           path: ./dist/windows # or path/to/artifact
 
       - name: Release

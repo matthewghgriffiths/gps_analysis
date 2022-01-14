@@ -8,6 +8,7 @@ from typing import Optional
 from io import BytesIO
 import argparse
 
+
 import pandas as pd
 import gpxpy
 from garminconnect import (
@@ -17,7 +18,10 @@ from garminconnect import (
     GarminConnectAuthenticationError,
 )
 
-from .utils import map_concurrent, unflatten_json, strfsplit
+from .utils import (
+    map_concurrent, unflatten_json, strfsplit, 
+    add_logging_argument, set_logging
+)
 from .files import parse_gpx_data, read_fit_zipfile
 from . import splits
 
@@ -42,26 +46,30 @@ _ACTIVITY_TYPES = {
 def get_api(api=None):
     return api or _API or login()
 
-def login(email_address=None, password=None):
+def login(email_address=None, password=None, max_retries=5):
     if email_address is None:
         print("please input your Garmin email address: ")
         email_address = input()
     if password is None:
         password = getpass.getpass('Input your Garmin password: ')
 
-    try:
-        # API
-        ## Initialize Garmin api with your credentials
-        api = Garmin(email_address, password)
-        api.login()
-        global _API
-        _API = api 
-    except (
-        GarminConnectConnectionError,
-        GarminConnectAuthenticationError,
-        GarminConnectTooManyRequestsError,
-    ) as err:
-        logging.error("Error occurred during Garmin Connect communication: %s", err)
+    for i in range(max_retries):
+        try:
+            # API
+            ## Initialize Garmin api with your credentials
+            api = Garmin(email_address, password)
+            api.login()
+            global _API
+            _API = api 
+            break
+        except (
+            GarminConnectConnectionError,
+            GarminConnectAuthenticationError,
+            GarminConnectTooManyRequestsError,
+        ) as err:
+            logging.error("Error occurred during Garmin Connect communication: %s", err)
+    else:
+        raise err
 
     return api
 
@@ -274,6 +282,7 @@ def get_parser():
         type=date,
         help='start date to search for activities from in YYYY-MM-DD format'
     )
+    add_logging_argument(parser)
     return parser
 
 
@@ -283,6 +292,7 @@ def parse_args(args):
 
 def run(args=None):
     options = parse_args(args)
+    set_logging(options)
 
     api = login(options.user, options.password)
 

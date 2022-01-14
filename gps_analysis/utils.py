@@ -12,6 +12,38 @@ except ModuleNotFoundError:
 
 import numpy as np
 
+_LOGGING_LEVELS = {
+    'critical': logging.CRITICAL,
+    'error': logging.ERROR,
+    'warn': logging.WARNING,
+    'warning': logging.WARNING,
+    'info': logging.INFO,
+    'debug': logging.DEBUG,
+}
+
+def add_logging_argument(parser):
+    parser.add_argument(
+        "-l"
+        "-log", 
+        "--log", 
+        default="warning",
+        help=(
+            "Provide logging level. "
+            "Example --log debug', default='warning'"
+        ),
+    )
+
+
+def set_logging(options):
+    level = _LOGGING_LEVELS.get(options.log.lower())
+    if level is None:
+        raise ValueError(
+            f"log level given: {options.log}"
+            f" -- must be one of: {' | '.join(_LOGGING_LEVELS.keys())}")
+
+    logging.basicConfig(level=level)
+
+
 
 _MSH_STR_FORMAT = "{minutes:d}:{seconds:02d}.{hundredths:02d}"
 _HMSH_STR_FORMAT = "{hours}:{minutes:02d}:{seconds:02d}.{hundredths:02d}"

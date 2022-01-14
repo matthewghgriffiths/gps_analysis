@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='gps_analysis',
-    version='0.0.6',
+    version='0.0.7',
     description='A python library for analysing gps data',
     author='Matthew Grifiths',
     author_email='matthewghgriffiths@gmail.com',
@@ -16,7 +16,8 @@ setup(
     packages=['gps_analysis'],
     entry_points={
         'console_scripts': [
-            'gps_analysis = world_rowing.garmin:main [GARMIN]'
+            'garmin = world_rowing.garmin:main [GARMIN]',
+            'gpx = world_rowing.files:main'
         ]
     },
     license='MIT', 
