@@ -3,6 +3,7 @@ import sys
 import argparse
 import zipfile
 from pathlib import Path
+import logging
 
 import gpxpy
 import fitparse
@@ -180,7 +181,11 @@ def run(args=None):
     )
 
 def main():
-    run(sys.argv[1:])
+    try:
+        run(sys.argv[1:])
+    except Exception as err:
+        logging.error(err) 
+        
     input("Press enter to finish")
 
 if __name__ == "__main__":

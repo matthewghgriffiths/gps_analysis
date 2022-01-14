@@ -68,8 +68,8 @@ def login(email_address=None, password=None, max_retries=5):
             GarminConnectTooManyRequestsError,
         ) as err:
             logging.error("Error occurred during Garmin Connect communication: %s", err)
-    else:
-        raise err
+            if i + 1 == max_retries:
+                raise err
 
     return api
 
@@ -316,7 +316,11 @@ def run(args=None):
 
 
 def main():
-    run(sys.argv[1:])
+    try:
+        run(sys.argv[1:])
+    except Exception as err:
+        logging.error(err) 
+        
     input("Press enter to finish")
 
 if __name__ == "__main__":
