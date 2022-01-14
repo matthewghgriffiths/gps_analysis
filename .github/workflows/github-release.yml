@@ -43,14 +43,14 @@ jobs:
           path: "."
           spec: "analysis.spec"
 
-      - name: Install zip
-        uses: montudor/action-zip@v1
-        # with:
-        #   args: zip -qq -r ./dist/gps-analysis-windows.zip ./dist/windows
-          
       - name: Zip windows executable
-        run: zip -qq -r gps-analysis-windows.zip dist/windows
-        working-directory: ./dist
+        uses: montudor/action-zip@v1
+        with:
+          args: zip -qq -r ./dist/gps-analysis-windows.zip ./dist/windows
+          
+      # - name: Zip windows executable
+      #   run: zip -qq -r gps-analysis-windows.zip dist/windows
+      #   working-directory: ./dist
 
       - uses: actions/upload-artifact@v2
         with:

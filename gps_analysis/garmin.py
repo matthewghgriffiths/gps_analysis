@@ -314,8 +314,10 @@ def run(args=None):
         activities, activity_data, 
         xlpath=options.outfile)
 
+
 def main():
     run(sys.argv[1:])
+    input("Press enter to finish")
 
 if __name__ == "__main__":
     main()
