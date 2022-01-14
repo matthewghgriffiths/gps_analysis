@@ -45,9 +45,12 @@ jobs:
 
       - name: Zip windows executable
         uses: montudor/action-zip@v1
-        working-directory: ./dist/windows/
         with:
-          args: zip -qq -r ../gps-analysis-windows.zip gps_analysis
+          args: cd ./dist/windows; zip -qq -r ../gps-analysis-windows.zip gps_analysis
+          
+      # - name: Zip windows executable
+      #   run: zip -qq -r gps-analysis-windows.zip dist/windows
+      #   working-directory: ./dist
 
       - uses: actions/upload-artifact@v2
         with:
