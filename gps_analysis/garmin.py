@@ -182,7 +182,7 @@ def activities_to_dataframe(activities):
 
 
 def activity_data_to_excel(
-        activities, activity_data=None, locations=None, 
+        activities, activity_data=None, locations=None, cols=None, 
         xlpath='garmin_data.xlsx', api=None, max_workers=4, 
         show_progress=True
 ):
@@ -202,7 +202,7 @@ def activity_data_to_excel(
     activity_td.totalDistance = (activity_td.totalDistance/1000).round(1)
 
     activity_best_times = pd.concat({
-        actid: splits.find_all_best_times(data)
+        actid: splits.find_all_best_times(data, cols=cols)
         for actid, data in activity_data.items() if not data.empty
     }, 
         names = ('activityId', 'length', 'distance')
@@ -226,7 +226,8 @@ def activity_data_to_excel(
 
     with pd.ExcelWriter(xlpath) as xlf:
         activities.set_index('activityId').to_excel(xlf, "activities")
-        best_times.applymap(strfsplit).to_excel(xlf, "best_times")
+        best_times.loc[:, ['time', 'split']] = best_times[['time', 'split']].applymap(strfsplit)
+        best_times.to_excel(xlf, "best_times")
         for actid, timings in location_timings.items():
             timings.applymap(strfsplit).to_excel(
                 xlf, sheet_names.loc[actid])
@@ -305,14 +306,17 @@ def run(args=None):
         endDate=options.end_date,
         api=api
     )
-    activity_data, errors = load_activities(
+    activity_data, errors = load_fit_activities(
         activities.activityId,
         api=api
     )
 
     activity_data_to_excel(
-        activities, activity_data, 
-        xlpath=options.outfile)
+        activities, 
+        activity_data, 
+        cols=['heart_rate', 'cadence', 'bearing'],
+        xlpath=options.outfile
+    )
 
 
 def main():
