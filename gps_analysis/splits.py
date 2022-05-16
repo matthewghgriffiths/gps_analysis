@@ -29,15 +29,21 @@ _LOCATION_DATA = {
     'tideway': _DATA_PATH / 'tideway_locations.tsv',
 }
 
-def load_locations(loc=None):
+def load_place_locations(loc=None):
     if loc is None:
         loc = _LOCATION_DATA
     elif loc in _LOCATION_DATA:
         loc = [loc]
-        
-    return pd.concat([
-        pd.read_table(_LOCATION_DATA[l], index_col=0) for l in loc
-    ])#.set_index('location', drop=True)
+
+    return {
+        l: pd.read_table(_LOCATION_DATA[l], index_col=0)
+        for l in loc
+    }
+
+def load_locations(loc=None):        
+    return pd.concat(list(
+        load_place_locations(loc).values()
+    ))#.set_index('location', drop=True)
 
 
 def find_all_crossing_times(positions, locations=None, thresh=0.15):
@@ -120,6 +126,29 @@ def find_crossing_times(positions, loc, thresh=0.15):
 
 
     return crossing_times
+
+
+def get_distance_to_locations(activity_data, locs=None):
+    if not isinstance(locs, pd.DataFrame):
+        locs = pd.concat({
+            l: pos.mean() for l, pos in load_place_locations(locs).items()
+        }).unstack()
+
+    loc_dists = locs.T.apply(
+        lambda x: geodesy.haversine_km(activity_data, x)
+    )
+    return loc_dists, locs
+
+def get_closest_locations(loc_dists, locs=None):
+    if not isinstance(locs, pd.DataFrame):
+        locs = pd.concat({
+            l: pos.mean() for l, pos in load_place_locations(locs).items()
+        }).unstack()
+
+    return pd.DataFrame({
+        'location': locs.index[loc_dists.values.argmin(1)],
+        'distance': loc_dists.values.min(1),
+    }, index=loc_dists.index)
 
 
 def find_best_times(positions, distance, cols=None):

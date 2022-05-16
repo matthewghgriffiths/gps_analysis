@@ -39,6 +39,13 @@ class RadBearing(NamedTuple):
     def to_latlon(self):
         return LatLonBear(*map(np.rad2deg, self))
 
+_Coords = (
+    LatLon, 
+    LatLonBear,
+    RadCoords,
+    RadBearing,
+)
+
 def cross(a, b):
     a1, a2, a3 = a 
     b1, b2, b3 = b 
@@ -106,20 +113,32 @@ def to_axis(pos):
     z = cosp * sint 
     return Vector(x, y, z)
 
-
-def haversine(pos1, pos2):
-    phi1, lam1 = get_rad_coords(pos1)
-    phi2, lam2 = get_rad_coords(pos2)
+def _haversine(rad1, rad2):
+    phi1, lam1 = rad1 
+    phi2, lam2 = rad2
     sindphi = sin((phi2 - phi1)/2)**2
     sindlam = sin((lam2 - lam1)/2)**2
     a = sindphi + cos(phi1) * cos(phi2) * sindlam
     return 2 * arctan2(sqrt(a), sqrt(1 - a))
 
+def haversine(pos1, pos2):
+    return _haversine(get_rad_coords(pos1), get_rad_coords(pos2))
 
 def haversine_km(pos1, pos2):
     theta = haversine(pos1, pos2)
     return theta * _AVG_EARTH_RADIUS_KM
 
+
+def cdist_haversine(pos1, pos2):
+    from scipy.spatial.distance import cdist 
+    return cdist(
+        np.array(get_rad_coords(pos1)).T,
+        np.array(get_rad_coords(pos2)).T,
+        metric=_haversine
+    )
+
+def cdist_haversine_km(pos1, pos2):
+    return cdist_haversine(pos1, pos2) * _AVG_EARTH_RADIUS_KM
 
 def rad_bearing(pos1, pos2):
     phi1, lam1 = get_rad_coords(pos1)

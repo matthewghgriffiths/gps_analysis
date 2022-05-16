@@ -3,6 +3,8 @@ import sys
 import logging
 from typing import Callable, Dict, TypeVar, Tuple, Any
 from contextlib import nullcontext
+import string 
+from datetime import timedelta  
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 try:
@@ -44,6 +46,10 @@ def set_logging(options):
     logging.basicConfig(level=level)
 
 
+def random_alphanumeric(size, p=None):
+    alphanumeric = string.ascii_letters + string.digits
+    return ''.join(np.random.choice(list(alphanumeric), size=40))
+
 
 _MSH_STR_FORMAT = "{minutes:d}:{seconds:02d}.{hundredths:02d}"
 _HMSH_STR_FORMAT = "{hours}:{minutes:02d}:{seconds:02d}.{hundredths:02d}"
@@ -54,6 +60,49 @@ def strfsplit(tdelta, hours=False):
         return _HMSH_STR_FORMAT.format(**components)
     else:
         return _MSH_STR_FORMAT.format(**components)
+
+
+def format_totalseconds(seconds, hundreths=True):
+    return format_timedelta(timedelta(seconds=seconds), hundreths=hundreths)
+
+
+def format_timedelta(td, hours=False, hundreths=True):
+    mins, secs = divmod(td.seconds, 60)
+    if hours:
+        hs, mins = divmod(mins, 60)
+        return f"{hs:02d}:{mins:02d}:{secs:02d}"
+    else:
+        end = f".{(td.microseconds // 10_000):02d}" if hundreths else ''
+        return f"{mins}:{secs:02d}{end}"
+
+
+def format_timedelta_hours(td):
+    return format_timedelta(td, hours=True)
+
+def format_yaxis_splits(ax=None, ticks=True, hundreths=False):
+    format_axis_splits(ax=ax, yticks=ticks, hundreths=hundreths)
+
+def format_xaxis_splits(ax=None, ticks=True, hundreths=False):
+    format_axis_splits(ax=ax, yticks=False, xticks=ticks, hundreths=hundreths)
+
+def format_axis_splits(ax=None, yticks=True, xticks=False, hundreths=False):
+    import matplotlib.pyplot as plt
+    ax = ax or plt.gca()
+    if yticks:
+        if yticks is True:
+            yticks = ax.get_yticks()
+        ax.set_yticks(yticks)
+        ax.set_yticklabels(
+            [format_totalseconds(s, hundreths) for s in yticks]
+        )
+    if xticks:
+        if xticks is True:
+            xticks = ax.get_xticks()
+        ax.set_xticks(xticks)
+        ax.set_xticklabels(
+            [format_totalseconds(s, hundreths) for s in xticks]
+        )
+
 
 def unflatten_json(entity, key=()):
     if isinstance(entity, dict):
