@@ -57,11 +57,12 @@ def read_fit_zipfile(zip_file):
 
 
 def read_fit_file(fit_file, open=open):
-    with open(fit_file) as f:
-        return parse_fit_data(fitparse.FitFile(f))
+    with open(fit_file, 'r') as f:
+        return parse_fit_data(f)
 
 
-def parse_fit_data(fit_data):
+def parse_fit_data(fit_file):
+    fit_data = fitparse.FitFile(fit_file)
     positions = pd.DataFrame.from_records(
         {f.name: f.value for f in record.fields}
         for record in fit_data.get_messages("record")

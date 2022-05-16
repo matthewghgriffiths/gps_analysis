@@ -44,7 +44,7 @@ def find_all_crossing_times(positions, locations=None, thresh=0.15):
     locations = load_locations() if locations is None else locations
 
     times = pd.concat({
-        loc: find_crossing_times(positions, pos)
+        loc: find_crossing_times(positions, pos, thresh=thresh)
         for loc, pos in locations.iterrows()
     },
         names = ['location', 'distance']
@@ -87,7 +87,7 @@ def find_crossing_times(positions, loc, thresh=0.15):
     bearings = geodesy.bearing(intersections, loc)
     sgns = np.sign(np.cos(np.radians(bearings - loc.bearing)))
     if not sgns.size:
-        return pd.Series([])
+        return pd.Series([], dtype=float)
 
     crossings = bearings.index[sgns != sgns.shift(fill_value=sgns.iloc[0])]
         
@@ -98,7 +98,8 @@ def find_crossing_times(positions, loc, thresh=0.15):
         weight(*geodesy.haversine(intersections.loc[i:i+2], loc))
         for i in crossings
     ], 
-        index=crossings
+        index=crossings,
+        dtype=float, 
     )
 
     time_deltas = (
@@ -121,7 +122,7 @@ def find_crossing_times(positions, loc, thresh=0.15):
     return crossing_times
 
 
-def find_best_times(positions, distance):
+def find_best_times(positions, distance, cols=None):
     total_distance = positions.distance.iloc[-1]
     time_elapsed = positions.timeElapsed.dt.total_seconds()
     sel = positions.distance + distance < total_distance
@@ -149,14 +150,23 @@ def find_best_times(positions, distance):
         'time': best_times,
         'split': best_times / distance / 2
     })
+    if cols:
+        dist_cols = positions.set_index('distance')[cols]
+        avg_col_vals = pd.DataFrame([
+            dist_cols[d:d + distance][cols].mean(0)
+            for d in distances[best]
+        ], columns=cols).round(1)
+        avg_col_vals.index = best
+        best_timesplits = pd.concat([best_timesplits, avg_col_vals], axis=1)
+
     best_timesplits.index = distances[best].round(3)
     return best_timesplits
 
 
-def find_all_best_times(positions, distances=None):
+def find_all_best_times(positions, distances=None, cols=None):
     distances = distances or _STANDARD_DISTANCES
     return pd.concat({
-        name: find_best_times(positions, distance)
+        name: find_best_times(positions, distance, cols=cols)
         for name, distance in distances.items()
     },
         names = ('length', 'distance'),

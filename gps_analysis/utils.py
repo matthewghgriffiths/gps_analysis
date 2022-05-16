@@ -178,3 +178,16 @@ def map_concurrent(
                     status['nerrors'] = len(errors)
 
     return output, errors
+
+
+def flatten_json(obj, key=''):
+    if isinstance(obj, dict):
+        key = key + '_' if key else ''
+        for k, val in obj.items():
+            yield from flatten_json(val, key + k)
+    elif isinstance(obj, list):
+        key = key + '_' if key else ''
+        for i, val in enumerate(obj):
+            yield from flatten_json(val, key + str(i))
+    else:
+        yield key, obj 
