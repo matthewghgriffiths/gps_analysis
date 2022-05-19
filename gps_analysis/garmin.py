@@ -7,6 +7,11 @@ from datetime import datetime
 from typing import Optional 
 from io import BytesIO
 import argparse
+import json
+import zipfile 
+import shutil
+from pathlib import Path 
+import re 
 
 
 import pandas as pd
@@ -46,18 +51,27 @@ _ACTIVITY_TYPES = {
 def get_api(api=None):
     return api or _API or login()
 
-def login(email_address=None, password=None, max_retries=5):
-    if email_address is None:
+def login(email=None, password=None, credentials=None, max_retries=5):
+    creds = {
+        'email': email,
+        'password': password,
+    }
+    if credentials:
+        with open(credentials, 'r') as f:
+            creds.update(json.load(f))
+            
+
+    if creds['email'] is None:
         print("please input your Garmin email address: ")
-        email_address = input()
-    if password is None:
-        password = getpass.getpass('Input your Garmin password: ')
+        creds['email'] = input()
+    if creds['password'] is None:
+        creds['password'] = getpass.getpass('Input your Garmin password: ')
 
     for i in range(max_retries):
         try:
             # API
             ## Initialize Garmin api with your credentials
-            api = Garmin(email_address, password)
+            api = Garmin(**creds)
             api.login()
             global _API
             _API = api 
@@ -117,6 +131,53 @@ def load_activities(activity_ids, max_workers=4, api=None, show_progress=True):
         show_progress=show_progress, raise_on_err=False
     )
 
+def download_fit(activity_id, path, api=None):
+    api = get_api(api)
+
+    zip_data = api.download_activity(
+        activity_id, dl_fmt=api.ActivityDownloadFormat.ORIGINAL)
+    with BytesIO(zip_data) as f, open(path, 'wb') as out:
+        with zipfile.ZipFile(f, "r") as zipf:
+            fit_file, = (f for f in zipf.filelist if f.filename.endswith("fit"))
+            with zipf.open(fit_file, 'r') as f:
+                shutil.copyfileobj(f, out)
+
+    return path
+
+def list_activity_fits(path):
+    path = Path(path)
+    fit_files = (
+        (p, re.match(r"[0-9]+", p.name))
+        for p in path.glob("*.fit")
+    )
+    return {int(m.group()): p for p, m in fit_files if m}
+
+def download_fits_to_folder(
+        activity_ids, 
+        folder, 
+        max_workers=4, 
+        api=None
+    ):
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+
+    downloaded = list_activity_fits(folder)
+    to_download = {
+        activity_id: (
+            activity_id, str(folder / f"{activity_id}.fit")
+        )
+        for activity_id in activity_ids
+        if activity_id not in downloaded
+    }
+    errors = {}
+    if to_download:
+        downloaded, errors = map_concurrent(
+            download_fit, 
+            to_download, 
+            max_workers=max_workers, 
+            api=get_api(api) 
+        )
+    return downloaded, errors
 
 def load_fit_activity(activity_id, api=None):
     api = get_api(api)
@@ -197,13 +258,16 @@ def activity_data_to_excel(
     activity_td.columns = ['activityId', 'startTime', 'totalDistance']
 
     # reorder activity_data
-    activity_data = {i: activity_data[i] for i in activity_td.activityId}
+    activity_data = {
+        i: activity_data[i] for i in activity_td.activityId
+        if not activity_data[i].empty and ('longitude' in activity_data[i])
+    }
 
     activity_td.totalDistance = (activity_td.totalDistance/1000).round(1)
 
     activity_best_times = pd.concat({
         actid: splits.find_all_best_times(data, cols=cols)
-        for actid, data in activity_data.items() if not data.empty
+        for actid, data in activity_data.items() 
     }, 
         names = ('activityId', 'length', 'distance')
     )
@@ -229,8 +293,9 @@ def activity_data_to_excel(
         best_times.loc[:, ['time', 'split']] = best_times[['time', 'split']].applymap(strfsplit)
         best_times.to_excel(xlf, "best_times")
         for actid, timings in location_timings.items():
-            timings.applymap(strfsplit).to_excel(
-                xlf, sheet_names.loc[actid])
+            if not timings.empty:
+                timings.applymap(strfsplit).to_excel(
+                    xlf, sheet_names.loc[actid])
 
 
 def get_parser():
@@ -249,6 +314,11 @@ def get_parser():
         help='path of output excel spreadsheet'
     )
     parser.add_argument(
+        '--start', type=int, default=0, nargs='?',
+        help="if loading large number of activities, sets when to "
+        "start loading the activities from "
+    )
+    parser.add_argument(
         '-u', '--user', '--email',
         type=str, nargs='?',
         help='Email address to use'
@@ -257,6 +327,23 @@ def get_parser():
         '-p', '--password',
         type=str, nargs='?',
         help='Password'
+    )
+    parser.add_argument(
+        '-c', '--credentials',
+        type=str, nargs='?',
+        help='path to json file containing credentials (email and password)'
+    )
+    parser.add_argument(
+        '--action', 
+        choices=['excel', 'download'],
+        default='excel', 
+        nargs='?', 
+        help='specify action will happen'
+    )
+    parser.add_argument(
+        '--folder', 
+        type=str, default='garmin_data', nargs='?', 
+        help='folder path to download fit files'
     )
     parser.add_argument(
         '-a', '--activity', 
@@ -295,10 +382,10 @@ def run(args=None):
     options = parse_args(args)
     set_logging(options)
 
-    api = login(options.user, options.password)
+    api = login(options.user, options.password, options.credentials)
 
     activities = get_activities(
-        0, options.n, 
+        options.start, options.start + options.n, 
         activityType=options.activity, 
         minDistance=options.min_distance, 
         maxDistance=options.max_distance, 
@@ -306,18 +393,23 @@ def run(args=None):
         endDate=options.end_date,
         api=api
     )
-    activity_data, errors = load_fit_activities(
-        activities.activityId,
-        api=api
-    )
-
-    activity_data_to_excel(
-        activities, 
-        activity_data, 
-        cols=['heart_rate', 'cadence', 'bearing'],
-        xlpath=options.outfile
-    )
-
+    if options.action == 'excel':
+        activity_data, errors = load_fit_activities(
+            activities.activityId,
+            api=api
+        )
+        activity_data_to_excel(
+            activities, 
+            activity_data, 
+            cols=['heart_rate', 'cadence', 'bearing'],
+            xlpath=options.outfile
+        )
+        return activity_data
+    elif options.action == 'download':
+        fit_files = download_fits_to_folder(
+            activities.activityId, options.folder, api=api
+        )
+        return fit_files
 
 def main():
     try:

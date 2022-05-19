@@ -28,6 +28,7 @@ def add_logging_argument(parser):
         "-l"
         "-log", 
         "--log", 
+        '--logging',
         default="warning",
         help=(
             "Provide logging level. "

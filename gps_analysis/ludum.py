@@ -84,6 +84,14 @@ class LudumClient:
         self.session = requests.session()
         self._login_response = None 
 
+    @classmethod 
+    def from_credentials(cls, credentials):
+        if not isinstance(credentials, dict):
+            with open(credentials, 'r') as f:
+                credentials = json.load(f)
+
+        return cls(**credentials)
+
     def login(self, username=None, password=None, client_secret=None, club_id=None):
         username = username or self.username 
         password = password or self.password
@@ -338,24 +346,24 @@ def read_ludum_data(filepath):
     positions = pd.DataFrame.from_dict(
         data.pop('position'), orient='index'
     ).reset_index(drop=True)
-    if 'lng' in positions:
-        positions['long'] = positions.lng
-
     last = positions.index[-1]
-
-    positions['latitude'] = positions.lat
-    positions['longitude'] = positions.long
-    positions['distance'] /= 1000  
-    
     positions['time'] = pd.to_datetime(positions.timestamp, unit='s')
-    
     positions['timeElapsed'] = positions.time - positions.time[0]
-    positions['distanceDelta'] = - positions.distance.diff(-1)
-    positions.loc[last, 'distanceDelta'] = 0
+    positions['timeDelta'] = - positions.timeElapsed.diff(-1)
+    positions.loc[last, 'timeDelta'] = pd.Timedelta(0)
 
-    positions['bearing_r'] = geodesy.rad_bearing(positions, positions.shift(-1))
-    positions.loc[last, 'bearing_r'] = positions.bearing_r[1]
-    positions['bearing'] = np.rad2deg(positions.bearing_r)
+    if 'lat' in positions:
+        if 'lng' in positions:
+            positions['long'] = positions.lng
+
+        positions['latitude'] = positions.lat
+        positions['longitude'] = positions.long
+        positions['distance'] /= 1000
+        positions['distanceDelta'] = - positions.distance.diff(-1)
+        positions.loc[last, 'distanceDelta'] = 0
+        positions['bearing_r'] = geodesy.rad_bearing(positions, positions.shift(-1))
+        positions.loc[last, 'bearing_r'] = positions.bearing_r.iloc[-2]
+        positions['bearing'] = np.rad2deg(positions.bearing_r)
 
     metadata = pd.json_normalize(data)
 

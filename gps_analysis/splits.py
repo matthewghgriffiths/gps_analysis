@@ -216,3 +216,20 @@ def calc_pareto_front(positions):
         'distance': dist_diffs[mask],
         'speeds': speeds[mask], 
     })
+
+def calc_time_above_hr(
+    activity_data, 
+    key='activity_id', 
+    hrs=None,
+    rescale=3600
+):
+    hrs = pd.RangeIndex(60, 200, 1)
+    return activity_data.reset_index().groupby(
+        [key, 'heart_rate']
+    ).timeDelta.sum().dt.total_seconds().unstack(
+        fill_value=0
+    ).sort_index(
+        axis=1, ascending=False
+    ).cumsum(1).reindex(
+        hrs, axis=1
+    ) / rescale
