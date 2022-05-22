@@ -3,7 +3,7 @@ import os
 import sys
 import getpass
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional 
 from io import BytesIO
 import argparse
@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path 
 import re 
 
-
+import numpy as np
 import pandas as pd
 import gpxpy
 from garminconnect import (
@@ -25,9 +25,9 @@ from garminconnect import (
 
 from .utils import (
     map_concurrent, unflatten_json, strfsplit, 
-    add_logging_argument, set_logging
+    add_logging_argument, set_logging, _YMD
 )
-from .files import parse_gpx_data, read_fit_zipfile
+from .files import parse_gpx_data, read_fit_zipfile, parse_fit_data, activity_data_to_excel
 from . import splits
 
 
@@ -144,31 +144,38 @@ def download_fit(activity_id, path, api=None):
 
     return path
 
-def list_activity_fits(path):
+def list_activity_fits(path, search="**/*[0-9].fit"):
     path = Path(path)
     fit_files = (
         (p, re.match(r"[0-9]+", p.name))
-        for p in path.glob("*.fit")
+        for p in path.glob(search)
     )
     return {int(m.group()): p for p, m in fit_files if m}
 
 def download_fits_to_folder(
         activity_ids, 
         folder, 
+        activity_names = None,
+        search="**/*[0-9].fit",
         max_workers=4, 
         api=None
     ):
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
 
-    downloaded = list_activity_fits(folder)
-    to_download = {
-        activity_id: (
-            activity_id, str(folder / f"{activity_id}.fit")
-        )
-        for activity_id in activity_ids
-        if activity_id not in downloaded
-    }
+    downloaded = list_activity_fits(folder, search=search)
+    if activity_names is None:  
+        activity_names = activity_ids
+
+    to_download = {}
+    for activity_id, name in zip(activity_ids, activity_names):
+        existing = downloaded.get(activity_id, None)
+        path = folder / f"{name}.fit"
+        if not existing and path != existing:
+            path.parent.mkdir(exist_ok=True)
+            to_download[activity_id] = (activity_id, path)
+
+
     errors = {}
     if to_download:
         downloaded, errors = map_concurrent(
@@ -242,60 +249,52 @@ def activities_to_dataframe(activities):
     return df
 
 
-def activity_data_to_excel(
-        activities, activity_data=None, locations=None, cols=None, 
-        xlpath='garmin_data.xlsx', api=None, max_workers=4, 
-        show_progress=True
+def download_and_process(activities, folder, save_file, api=None):
+    fit_files, _ = download_activities(
+                activities, folder, api=api
+    )
+    all_activities = process_fit_files(
+        fit_files, save_file
+    )
+    return all_activities 
+
+def download_activities(activities, folder, api=None):
+    activity_names = activities.startTimeLocal.str[:10].str.cat(
+        activities.activityId.astype(str), sep="/"
+    )
+    return download_fits_to_folder(
+        activities.activityId, folder, activity_names=activity_names, api=api
+    )
+
+
+def process_fit_files(
+    fit_files, 
+    save_file, 
 ):
-    if activity_data is None:
-        activity_data, _ = load_activities(
-            activities.activityId, max_workers=max_workers, 
-            show_progress=show_progress, api=api)
+    save_file = Path(save_file)
 
-    activity_td = activities[
-        ['activityId', 'startTimeLocal', 'distance']
-    ].sort_values(by='startTimeLocal', ascending=False)
-    activity_td.columns = ['activityId', 'startTime', 'totalDistance']
+    if save_file.exists():
+        all_activities = pd.read_parquet(save_file)
+        processed = all_activities.index.get_level_values(0)
+    else:
+        all_activities = pd.DataFrame([])
+        processed = set()
 
-    # reorder activity_data
-    activity_data = {
-        i: activity_data[i] for i in activity_td.activityId
-        if not activity_data[i].empty and ('longitude' in activity_data[i])
+    
+    to_load = {
+        i: (str(fit_files[i]),)
+        for i in fit_files.keys() - processed  
     }
+    if to_load:
+        loaded, errors =  map_concurrent(
+            parse_fit_data, to_load, max_workers=4
+        )
+        if loaded:
+            loaded = pd.concat(loaded, names = ['activityId'])
+            all_activities = pd.concat([all_activities, loaded])
+            all_activities.to_parquet(save_file)
 
-    activity_td.totalDistance = (activity_td.totalDistance/1000).round(1)
-
-    activity_best_times = pd.concat({
-        actid: splits.find_all_best_times(data, cols=cols)
-        for actid, data in activity_data.items() 
-    }, 
-        names = ('activityId', 'length', 'distance')
-    )
-
-    best_times = activity_best_times.reset_index().join(
-        activity_td.set_index('activityId'), on='activityId').set_index(
-        ['activityId', 'startTime', 'totalDistance', 'length', 'distance']
-    )
-
-    sheet_names = pd.Series(
-        activities.startTimeLocal.str.split(" ", expand=True)[0].str.cat(
-            activities.activityId.astype(str), sep="_"
-        ).values,
-        index = activities.activityId
-    )
-    location_timings = {
-        actid: splits.get_location_timings(data, locations)
-        for actid, data in activity_data.items() if not data.empty
-    }
-
-    with pd.ExcelWriter(xlpath) as xlf:
-        activities.set_index('activityId').to_excel(xlf, "activities")
-        best_times.loc[:, ['time', 'split']] = best_times[['time', 'split']].applymap(strfsplit)
-        best_times.to_excel(xlf, "best_times")
-        for actid, timings in location_timings.items():
-            if not timings.empty:
-                timings.applymap(strfsplit).to_excel(
-                    xlf, sheet_names.loc[actid])
+    return all_activities
 
 
 def get_parser():
@@ -308,11 +307,6 @@ def get_parser():
         'n', 
         type=int, default=5, nargs='?',
         help='maximum number of activities to load')
-    parser.add_argument(
-        'outfile', 
-        type=str, default='garmin.xlsx', nargs='?', 
-        help='path of output excel spreadsheet'
-    )
     parser.add_argument(
         '--start', type=int, default=0, nargs='?',
         help="if loading large number of activities, sets when to "
@@ -334,11 +328,16 @@ def get_parser():
         help='path to json file containing credentials (email and password)'
     )
     parser.add_argument(
-        '--action', 
-        choices=['excel', 'download'],
-        default='excel', 
-        nargs='?', 
+        '--actions', 
+        choices=['excel', "heartrate", 'download'],
+        default=['excel', 'download'], 
+        nargs='+', 
         help='specify action will happen'
+    )
+    parser.add_argument(
+        '--excel-file', 
+        type=Path, default='garmin.xlsx', nargs='?', 
+        help='path of output excel spreadsheet'
     )
     parser.add_argument(
         '--folder', 
@@ -370,6 +369,40 @@ def get_parser():
         type=date,
         help='start date to search for activities from in YYYY-MM-DD format'
     )
+    parser.add_argument(
+        "--min-hr", type=int, default=60, nargs='?',
+        help="min heart rate to plot"
+    )
+    parser.add_argument(
+        "--max-hr", type=int, default=200, nargs='?',
+        help="max heart rate to plot"
+    )
+    parser.add_argument(
+        "--hr-to-plot",
+        type=int, 
+        nargs='+', 
+        default = [60, 100, 120, 135, 142, 148, 155, 160, 165, 170, 175, 180],
+        help="which heart rates to plot lines for"
+    )
+    parser.add_argument(
+        "--cmap",
+        choices=['gist_ncar', "inferno", 'hot', 'hot_r'],
+        default = "gist_ncar",
+        help="The cmap to plot the heart rates for"
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int, 
+        default = 300,
+    )
+    parser.add_argument(
+        '--hr-file', type=Path, default='heart_rate.xlsx',
+        help="file to save heart rate to"
+    )
+    parser.add_argument(
+        '--hr-plot', default='heart_rate.png',
+        help="file to save heart rate to"
+    )
     add_logging_argument(parser)
     return parser
 
@@ -382,34 +415,146 @@ def run(args=None):
     options = parse_args(args)
     set_logging(options)
 
-    api = login(options.user, options.password, options.credentials)
-
-    activities = get_activities(
-        options.start, options.start + options.n, 
-        activityType=options.activity, 
-        minDistance=options.min_distance, 
-        maxDistance=options.max_distance, 
-        startDate=options.start_date, 
-        endDate=options.end_date,
-        api=api
-    )
-    if options.action == 'excel':
-        activity_data, errors = load_fit_activities(
-            activities.activityId,
+    folder = Path(options.folder)
+    save_file = Path(options.folder) / "activities.parquet"
+    api = None 
+    additional_info = None
+    all_activities = None
+    
+    if "download" in options.actions:
+        api = login(options.user, options.password, options.credentials)
+        
+        additional_info = get_activities(
+            options.start, options.start + options.n, 
+            activityType=options.activity, 
+            minDistance=options.min_distance, 
+            maxDistance=options.max_distance, 
+            startDate=options.start_date, 
+            endDate=options.end_date,
             api=api
         )
+        selected = additional_info.activityId
+        all_activities = download_and_process(
+            additional_info, folder, save_file, api=api)
+        activities = all_activities.loc[selected]
+        
+    else:        
+        all_activities = pd.read_parquet(save_file)
+        each_activity = all_activities.groupby(level=0)
+        activity_info = pd.DataFrame({
+            "startTime": each_activity.time.min(), 
+            "totalDistance": each_activity.distance.max(),
+        }).sort_values("startTime", ascending=False)
+
+        selected = activity_info
+        if options.min_distance:
+            activity_info = activity_info.loc[
+                activity_info.totalDistance >= options.min_distance
+            ]
+        if options.max_distance:
+            activity_info = activity_info.loc[
+                activity_info.totalDistance <= options.max_distance
+            ]
+        if options.start_date:
+            start = options.start_date
+            # start = datetime.strptime(options.start_date, _YMD)
+
+            activity_info = activity_info.loc[
+                activity_info.startTime > start
+            ]
+        if options.end_date:
+            end = options.end_date
+            # end = datetime.strptime(options.end_date, _YMD)
+            activity_info = activity_info.loc[
+                activity_info.startTime < end + timedelta(days=1)
+            ]
+
+        selected = activity_info.index 
+        activities = all_activities.loc[selected]
+
+    each_activity = activities.groupby(level=0)
+    activity_info = pd.DataFrame({
+        "startTime": each_activity.time.min(), 
+        "totalDistance": each_activity.distance.max(),
+    }).sort_values("startTime", ascending=False)
+
+    if 'excel' in options.actions:
         activity_data_to_excel(
-            activities, 
-            activity_data, 
+            activities,
             cols=['heart_rate', 'cadence', 'bearing'],
-            xlpath=options.outfile
+            additional_info=additional_info,
+            xlpath=options.excel_file
         )
-        return activity_data
-    elif options.action == 'download':
-        fit_files = download_fits_to_folder(
-            activities.activityId, options.folder, api=api
+
+    if "heartrate" in options.actions:
+        hrs = pd.RangeIndex(
+            options.min_hr, options.max_hr, name='heart rate'
         )
-        return fit_files
+        time_above_hr = splits.calc_time_above_hr(
+            activities, hrs=hrs
+        )
+        time_above_hr.index = activity_info.startTime.loc[
+            time_above_hr.index
+        ]
+        time_above_hr.sort_index(inplace=True)
+
+        with pd.ExcelWriter(options.hr_file, mode='w') as xlf:
+            time_above_hr.to_excel(
+                xlf, f"time above hr per session")
+            time_above_hr.groupby(
+                pd.Grouper(freq='w')
+            ).sum().to_excel(xlf, f"time above hr per week")
+            time_above_hr.groupby(
+                pd.Grouper(freq='M')
+            ).sum().to_excel(xlf, f"time above hr per month")
+
+        rolling_time_above_hr = time_above_hr.sort_index().rolling(
+            pd.Timedelta(days=7), 
+            min_periods=1
+        ).sum()
+        reltime_above_hr = (
+            rolling_time_above_hr / rolling_time_above_hr.values[:, [0]]
+        )
+        hr_to_plot = options.hr_to_plot
+        cmap = 'gist_ncar'
+
+        from .plot import plt, plot_heart_rates, mpl
+        
+        f, (ax1, ax2) = plt.subplots(2, figsize=(16, 16))
+
+        _, _, hr_to_plot = plot_heart_rates(
+            rolling_time_above_hr, hrs, hr_to_plot=hr_to_plot, cmap=cmap, ax=ax1)
+        _, _, hr_to_plot = plot_heart_rates(
+            reltime_above_hr * 100, hrs, hr_to_plot=hr_to_plot, cmap=cmap, ax=ax2)
+
+        ax2.legend(
+            bbox_to_anchor=(0., 1.02, 1., .102), 
+            ncol=len(hr_to_plot),
+            loc=3, 
+            mode="expand",
+            borderaxespad=0.
+        )
+
+        xlims = rolling_time_above_hr.index[0], rolling_time_above_hr.index[-1]
+        ax1.set_xlim(*xlims)
+        ax2.set_xlim(*xlims)
+        ax1.xaxis.set_minor_locator(mpl.ticker.FixedLocator(np.arange(*ax1.get_xlim())))
+        ax2.xaxis.set_minor_locator(mpl.ticker.FixedLocator(np.arange(*ax1.get_xlim())))
+        ax2.set_xticklabels([])
+        ax2.xaxis.set_ticks_position("top")
+        ax2.set_xlabel("date")
+
+        ax1.set_ylim(0, rolling_time_above_hr.max().max() * 1.05)
+        ax1.set_ylabel("hours spent above HR bpm per week")
+        ax2.set_ylim(100, 0)
+        ax2.set_ylabel("relative time spent above HR bpm per week")
+        ax2.yaxis.set_major_formatter(mpl.ticker.PercentFormatter())
+
+        f.tight_layout()
+        f.savefig(options.hr_plot, dpi=options.dpi)
+
+
+    return activities, additional_info
 
 def main():
     try:

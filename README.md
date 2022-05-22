@@ -19,22 +19,30 @@ optional arguments:
                         Provide logging level. Example --log debug', default='warning'
 
 $ garmin --help
-usage: garmin [-h] [-u [USER]] [-p [PASSWORD]] [-a [ACTIVITY]] [--min-distance [MIN_DISTANCE]]
-                 [--max-distance [MAX_DISTANCE]] [--start-date START_DATE] [--end-date END_DATE]
-                 [n] [outfile]
+usage: garmin [-h] [--start [START]] [-u [USER]] [-p [PASSWORD]] [-c [CREDENTIALS]] [--actions {excel,heartrate,download} [{excel,heartrate,download} ...]] [--excel-file [EXCEL_FILE]] [--folder [FOLDER]] [-a [ACTIVITY]] [--min-distance [MIN_DISTANCE]]
+                 [--max-distance [MAX_DISTANCE]] [--start-date START_DATE] [--end-date END_DATE] [--min-hr [MIN_HR]] [--max-hr [MAX_HR]] [--hr-file HR_FILE] [--hr-plot HR_PLOT] [--hr-to-plot HR_TO_PLOT [HR_TO_PLOT ...]] [--cmap {gist_ncar,inferno,hot,hot_r}] [--dpi DPI]
+                 [-l-log LOG]
+                 [n]
 
 Analyse recent gps data
 
 positional arguments:
   n                     maximum number of activities to load
-  outfile               path of output excel spreadsheet
 
 optional arguments:
   -h, --help            show this help message and exit
+  --start [START]       if loading large number of activities, sets when to start loading the activities from
   -u [USER], --user [USER], --email [USER]
                         Email address to use
   -p [PASSWORD], --password [PASSWORD]
                         Password
+  -c [CREDENTIALS], --credentials [CREDENTIALS]
+                        path to json file containing credentials (email and password)
+  --actions {excel,heartrate,download} [{excel,heartrate,download} ...]
+                        specify action will happen
+  --excel-file [EXCEL_FILE]
+                        path of output excel spreadsheet
+  --folder [FOLDER]     folder path to download fit files
   -a [ACTIVITY], --activity [ACTIVITY]
                         activity type, options: rowing, cycling, running
   --min-distance [MIN_DISTANCE]
@@ -44,4 +52,15 @@ optional arguments:
   --start-date START_DATE
                         start date to search for activities from in YYYY-MM-DD format
   --end-date END_DATE   start date to search for activities from in YYYY-MM-DD format
+  --min-hr [MIN_HR]     min heart rate to plot
+  --max-hr [MAX_HR]     max heart rate to plot
+  --hr-file HR_FILE     file to save heart rate to
+  --hr-plot HR_PLOT     file to save heart rate to
+  --hr-to-plot HR_TO_PLOT [HR_TO_PLOT ...]
+                        which heart rates to plot lines for
+  --cmap {gist_ncar,inferno,hot,hot_r}
+                        The cmap to plot the heart rates for, options
+  --dpi DPI
+  -l-log LOG, --log LOG, --logging LOG
+                        Provide logging level. Example --log debug', default='warning'
 ```

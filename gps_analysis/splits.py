@@ -1,11 +1,12 @@
 
 from pathlib import Path
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
 
 from . import geodesy
-from .utils import is_pareto_efficient
+from .utils import is_pareto_efficient, distance_to_km
 
 
 _STANDARD_DISTANCES = {
@@ -28,6 +29,7 @@ _LOCATION_DATA = {
     'cav': _DATA_PATH / 'cav_locations.tsv',
     'tideway': _DATA_PATH / 'tideway_locations.tsv',
 }
+
 
 def load_place_locations(loc=None):
     if loc is None:
@@ -201,6 +203,38 @@ def find_all_best_times(positions, distances=None, cols=None):
         names = ('length', 'distance'),
     )
 
+
+def process_activities(activities, locations=None, cols=None):
+    activity_id = activities.index.names[0]
+    each_activity = activities.groupby(level=0)
+    activity_info = pd.DataFrame({
+        "startTime": each_activity.time.min(), 
+        "totalDistance": each_activity.distance.max(),
+    }).sort_values("startTime", ascending=False)
+    best_times = each_activity.apply(
+        lambda x: find_all_best_times(
+            x.droplevel(0),
+            cols=cols
+        )
+    ).join(activity_info).reset_index().set_index(
+        [activity_id, 'startTime', 'totalDistance', 'length', 'distance']
+    ).sort_index(
+        level=['startTime', "length"],
+        key=lambda index: 
+            index if isinstance(index, pd.DatetimeIndex) 
+            else index.map(distance_to_km)
+    )
+    location_timings = (
+        (actid, get_location_timings(activity.droplevel(0)))
+        for actid, activity in each_activity if not activity.empty
+    )
+    location_timings = {
+        actid: timings 
+        for actid, timings in location_timings if not timings.empty
+    }
+    return activity_info, best_times, location_timings
+
+
 def calc_pareto_front(positions):
     i, j = np.triu_indices(len(positions), 1)
 
@@ -218,13 +252,14 @@ def calc_pareto_front(positions):
     })
 
 def calc_time_above_hr(
-    activity_data, 
+    activities, 
     key='activity_id', 
     hrs=None,
     rescale=3600
 ):
     hrs = pd.RangeIndex(60, 200, 1)
-    return activity_data.reset_index().groupby(
+    key = key or activities.index.names[0]
+    return activities.reset_index().groupby(
         [key, 'heart_rate']
     ).timeDelta.sum().dt.total_seconds().unstack(
         fill_value=0

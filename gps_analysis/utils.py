@@ -5,6 +5,7 @@ from typing import Callable, Dict, TypeVar, Tuple, Any
 from contextlib import nullcontext
 import string 
 from datetime import timedelta  
+import re 
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 try:
@@ -13,6 +14,9 @@ except ModuleNotFoundError:
     pass
 
 import numpy as np
+
+
+_YMD = "%Y-%m-%d"
 
 _LOGGING_LEVELS = {
     'critical': logging.CRITICAL,
@@ -62,6 +66,10 @@ def strfsplit(tdelta, hours=False):
     else:
         return _MSH_STR_FORMAT.format(**components)
 
+
+def distance_to_km(d):
+    dist, km = re.match(r"([0-9\.]+)\s*(k?)m", d).groups()
+    return float(dist) * (1 if km else 1e-3)
 
 def format_totalseconds(seconds, hundreths=True):
     return format_timedelta(timedelta(seconds=seconds), hundreths=hundreths)

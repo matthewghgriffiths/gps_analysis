@@ -61,6 +61,12 @@ def read_fit_file(fit_file, open=open, mode='rb'):
         return parse_fit_data(f)
 
 
+def peak_fit_file(fit_file):
+    fit_data = fitparse.FitFile(fit_file)
+    record = next(fit_data.get_messages("record"))
+    return {f.name: f.value for f in record.fields}
+
+
 def parse_fit_data(fit_file):
     fit_data = fitparse.FitFile(fit_file)
     positions = pd.DataFrame.from_records(
@@ -89,40 +95,34 @@ def parse_fit_data(fit_file):
 
     return positions
 
+
 def activity_data_to_excel(
-        activities, activity_data, locations=None, 
-        xlpath='garmin_data.xlsx',
+        activities, 
+        locations=None, cols=None,
+        additional_info=None, sheet_names=None, 
+        xlpath='excel_data.xlsx',
 ):
-    index_name = activities.index.name
-    activity_best_times = pd.concat({
-        actid: splits.find_all_best_times(data)
-        for actid, data in activity_data.items() if not data.empty
-    }, 
-        names = (index_name, 'length', 'distance')
+    activity_info, best_times, location_timings = splits.process_activities(
+        activities, locations=locations, cols=cols
     )
-
-    best_times = activity_best_times.reset_index().join(
-        activities, on=index_name).set_index(
-        [index_name, 'startTime', 'totalDistance', 'length', 'distance']
-    )[['time', 'split']]
-
-    # return best_times
-
-    sheet_names = pd.Series(
-        pd.to_datetime(activities.startTime).dt.strftime('%Y-%m-%d %H%M%S').values,
-        index = activities.index
-    )
-    location_timings = {
-        actid: splits.get_location_timings(data, locations)
-        for actid, data in activity_data.items() if not data.empty
-    }
-
+    if additional_info is not None:
+        activity_info.join(additional_info)
+    if sheet_names is None:
+        sheet_names = pd.Series(
+            activity_info.startTime.dt.strftime("%Y-%m-%d").str.cat(
+                activity_info.index.astype(str), sep=' '
+            )
+        )
+    
     with pd.ExcelWriter(xlpath) as xlf:
-        activities.to_excel(xlf, "activities")
-        best_times.applymap(utils.strfsplit).to_excel(xlf, "best_times")
+        activity_info.to_excel(xlf, "activities")
+        best_times.loc[:, ['time', 'split']] = best_times[['time', 'split']].applymap(
+            utils.strfsplit)
+        best_times.to_excel(xlf, "best_times")
         for actid, timings in location_timings.items():
-            timings.applymap(utils.strfsplit).to_excel(
-                xlf, sheet_names.loc[actid])
+            if not timings.empty:
+                timings.applymap(utils.strfsplit).to_excel(
+                    xlf, sheet_names.loc[actid])
 
 def get_parser():
     parser = argparse.ArgumentParser(
